@@ -1,0 +1,819 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ResumeAI — ATS Optimizer · TAA Analytics</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Mono:wght@400;500&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+<!-- PDF.js for PDF parsing -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<!-- Mammoth.js for DOCX parsing -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --bg:#0b0d11; --surface:#13161d; --surface2:#1a1e28; --surface3:#212636;
+  --border:#2a2f3d; --border2:#353b4e; --border3:#404660;
+  --text:#e8eaf0; --muted:#8892a4; --dim:#4a5268;
+  --gold:#f0b429; --gold2:#e8a212; --gold3:#ffd166;
+  --goldfaint:rgba(240,180,41,0.08); --goldfaint2:rgba(240,180,41,0.15);
+  --green:#3dd68c; --greenfaint:rgba(61,214,140,0.08); --greenfaint2:rgba(61,214,140,0.15);
+  --red:#ff6b6b; --redfaint:rgba(255,107,107,0.08);
+  --blue:#60a5fa; --bluefaint:rgba(96,165,250,0.08); --bluefaint2:rgba(96,165,250,0.15);
+  --purple:#a78bfa; --purplefaint:rgba(167,139,250,0.08);
+  --r:10px; --r2:6px; --r3:14px;
+}
+html,body{height:100%;background:var(--bg);color:var(--text);font-family:'Syne',sans-serif;overflow:hidden}
+
+#app{display:grid;grid-template-columns:430px 1fr;grid-template-rows:auto 1fr;height:100vh;overflow:hidden}
+
+/* TOPBAR */
+#topbar{grid-column:1/-1;background:var(--surface);border-bottom:1px solid var(--border);padding:0 24px;height:52px;display:flex;align-items:center;justify-content:space-between}
+#logo{display:flex;align-items:center;gap:10px}
+#logo-icon{width:32px;height:32px;background:var(--gold);border-radius:8px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+#logo-icon svg{width:18px;height:18px}
+#logo-name{font-size:17px;font-weight:800;letter-spacing:-0.4px}
+#logo-name span{color:var(--gold)}
+#logo-tag{font-size:9px;color:var(--dim);font-family:'DM Mono',monospace;letter-spacing:0.8px;padding:3px 8px;border:1px solid var(--border);border-radius:4px;margin-left:4px}
+#topbar-right{display:flex;align-items:center;gap:8px}
+.top-badge{font-size:9px;font-family:'DM Mono',monospace;padding:3px 9px;border-radius:20px;border:1px solid}
+.badge-gemini{color:#60a5fa;border-color:rgba(96,165,250,0.3);background:rgba(96,165,250,0.08)}
+.badge-ats{color:var(--green);border-color:rgba(61,214,140,0.3);background:var(--greenfaint)}
+
+/* LEFT */
+#left{background:var(--surface);border-right:1px solid var(--border);padding:16px;display:flex;flex-direction:column;gap:13px;overflow-y:auto;height:100%}
+.lbl{font-size:9px;font-weight:700;letter-spacing:1.8px;color:var(--dim);text-transform:uppercase;margin-bottom:6px;display:flex;align-items:center;gap:6px}
+.lbl::before{content:'';width:12px;height:1px;background:var(--border2);display:inline-block}
+
+textarea{width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:var(--r2);color:var(--text);font-family:'DM Mono',monospace;font-size:11px;line-height:1.65;padding:11px;resize:vertical;outline:none;transition:border-color 0.2s,background 0.2s;min-height:80px}
+textarea:focus{border-color:var(--border3);background:var(--surface3)}
+textarea::placeholder{color:var(--dim)}
+#jd-input{height:130px}
+#resume-textarea{height:150px}
+#char-count{font-size:9px;font-family:'DM Mono',monospace;color:var(--dim);text-align:right;margin-top:-8px}
+
+/* ── RESUME MODE TABS ── */
+#resume-tabs{display:flex;gap:0;border:1px solid var(--border);border-radius:var(--r2);overflow:hidden;margin-bottom:8px}
+.res-tab{flex:1;padding:8px 6px;font-size:10px;font-weight:700;font-family:'DM Mono',monospace;letter-spacing:0.3px;cursor:pointer;background:var(--surface2);color:var(--dim);border:none;transition:all 0.2s;text-align:center;white-space:nowrap}
+.res-tab.active{background:var(--gold);color:#000}
+.res-tab:not(.active):hover{background:var(--surface3);color:var(--muted)}
+
+/* ── UPLOAD ZONE ── */
+#upload-zone{
+  position:relative;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;
+  padding:18px 14px;
+  border:1.5px dashed var(--border2);border-radius:var(--r2);
+  cursor:pointer;transition:all 0.25s;min-height:130px;
+  background:var(--surface2);text-align:center;
+}
+#upload-zone:hover{border-color:var(--gold);background:var(--goldfaint)}
+#upload-zone.drag-over{border-color:var(--gold);background:var(--goldfaint);border-style:solid}
+#upload-zone.has-file{border-color:rgba(61,214,140,0.5);background:var(--greenfaint);border-style:solid}
+#upload-zone.parsing{border-color:rgba(240,180,41,0.5);background:var(--goldfaint);border-style:solid}
+#upload-zone.file-error{border-color:rgba(255,107,107,0.5);background:var(--redfaint);border-style:solid}
+#file-input{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%;z-index:1}
+.uz-icon{width:34px;height:34px;border-radius:9px;background:var(--surface3);border:1px solid var(--border2);display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all 0.2s}
+#upload-zone:hover .uz-icon{background:var(--goldfaint2);border-color:rgba(240,180,41,0.4)}
+#upload-zone.has-file .uz-icon{background:var(--greenfaint2);border-color:rgba(61,214,140,0.4)}
+#upload-zone.file-error .uz-icon{background:var(--redfaint);border-color:rgba(255,107,107,0.4)}
+.uz-title{font-size:12px;font-weight:700;color:var(--muted)}
+.uz-sub{font-size:9.5px;color:var(--dim);font-family:'DM Mono',monospace}
+.uz-badge{font-size:9px;font-family:'DM Mono',monospace;padding:3px 9px;border-radius:20px;border:1px solid;display:none}
+.uz-badge.ok{color:var(--green);border-color:rgba(61,214,140,0.3);background:var(--greenfaint);display:inline-flex}
+.uz-badge.parsing{color:var(--gold);border-color:rgba(240,180,41,0.3);background:var(--goldfaint);display:inline-flex}
+.uz-badge.err{color:var(--red);border-color:rgba(255,107,107,0.3);background:var(--redfaint);display:inline-flex}
+#clear-file{position:relative;z-index:2;display:none;background:none;border:none;font-size:9px;font-family:'DM Mono',monospace;color:var(--dim);cursor:pointer;padding:2px 6px;border-radius:4px;transition:color 0.2s;margin-top:2px}
+#clear-file:hover{color:var(--red)}
+#extracted-preview{display:none;margin-top:6px;background:var(--surface2);border:1px solid rgba(61,214,140,0.2);border-radius:var(--r2);padding:9px 11px;font-size:9.5px;font-family:'DM Mono',monospace;color:var(--dim);line-height:1.6;max-height:60px;overflow:hidden;position:relative}
+#extracted-preview::after{content:'';position:absolute;bottom:0;left:0;right:0;height:20px;background:linear-gradient(transparent,var(--surface2))}
+
+#submit-btn{width:100%;background:var(--gold);color:#000;border:none;border-radius:var(--r2);font-family:'Syne',sans-serif;font-size:14px;font-weight:800;padding:13px;cursor:pointer;transition:background 0.2s,transform 0.1s;display:flex;align-items:center;justify-content:center;gap:8px}
+#submit-btn:hover:not(:disabled){background:var(--gold2)}
+#submit-btn:active:not(:disabled){transform:scale(0.99)}
+#submit-btn:disabled{background:var(--surface3);color:var(--dim);cursor:not-allowed}
+
+#sample-hint{text-align:center;font-size:10px;color:var(--dim);font-family:'DM Mono',monospace}
+#sample-hint a{color:var(--gold);text-decoration:none;cursor:pointer}
+#sample-hint a:hover{text-decoration:underline}
+
+/* PIPELINE */
+#pipeline{display:flex;flex-direction:column;gap:4px}
+.pipe-step{display:flex;align-items:center;gap:9px;padding:8px 10px;border-radius:var(--r2);background:var(--surface2);border:1px solid var(--border);transition:all 0.3s ease;position:relative;overflow:hidden}
+.pipe-step::before{content:'';position:absolute;left:0;top:0;bottom:0;width:2px;background:transparent;transition:background 0.3s}
+.pipe-step.active{border-color:var(--gold);background:var(--goldfaint)}
+.pipe-step.active::before{background:var(--gold)}
+.pipe-step.done{border-color:rgba(61,214,140,0.35);background:var(--greenfaint)}
+.pipe-step.done::before{background:var(--green)}
+.pipe-step.error{border-color:rgba(255,107,107,0.35);background:var(--redfaint)}
+.pipe-step.error::before{background:var(--red)}
+.pipe-num{font-size:9px;font-family:'DM Mono',monospace;color:var(--dim);min-width:14px;font-weight:500}
+.pipe-step.active .pipe-num{color:var(--gold)} .pipe-step.done .pipe-num{color:var(--green)} .pipe-step.error .pipe-num{color:var(--red)}
+.pipe-label{font-size:10.5px;color:var(--muted);font-family:'DM Mono',monospace;flex:1}
+.pipe-step.active .pipe-label{color:var(--gold)} .pipe-step.done .pipe-label{color:var(--green)} .pipe-step.error .pipe-label{color:var(--red)}
+.pipe-icon{font-size:11px;flex-shrink:0;width:16px;text-align:center}
+
+@keyframes spin{to{transform:rotate(360deg)}}
+.spinner-sm{width:11px;height:11px;border:1.5px solid var(--border2);border-top-color:var(--gold);border-radius:50%;animation:spin 0.65s linear infinite;flex-shrink:0;display:inline-block}
+
+/* RIGHT */
+#right{overflow-y:auto;height:100%;padding:22px;display:flex;flex-direction:column;gap:18px}
+
+#placeholder{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;text-align:center;padding:30px}
+#ph-icon{width:68px;height:68px;border:1.5px solid var(--border2);border-radius:16px;display:flex;align-items:center;justify-content:center;color:var(--dim)}
+#placeholder h3{font-size:15px;font-weight:700;color:var(--muted)}
+#placeholder p{font-size:11px;color:var(--dim);font-family:'DM Mono',monospace;line-height:1.7;max-width:300px}
+.ph-steps{display:flex;flex-direction:column;gap:5px;margin-top:6px}
+.ph-item{display:flex;align-items:center;gap:10px;padding:7px 13px;border:1px solid var(--border);border-radius:6px;background:var(--surface);font-size:10.5px;color:var(--muted);font-family:'DM Mono',monospace}
+.ph-n{width:18px;height:18px;border-radius:50%;background:var(--surface3);border:1px solid var(--border2);font-size:9px;font-weight:700;display:flex;align-items:center;justify-content:center;color:var(--dim);flex-shrink:0}
+
+#error-msg{display:none;background:var(--redfaint);border:1px solid rgba(255,107,107,0.3);border-radius:var(--r2);padding:13px 15px;font-size:11px;color:var(--red);font-family:'DM Mono',monospace;line-height:1.7}
+
+/* SCORE CARD */
+#score-card{display:none;background:var(--surface);border:1px solid var(--border);border-radius:var(--r3);overflow:hidden}
+.score-top{padding:18px 20px;display:grid;grid-template-columns:1fr auto;gap:14px;align-items:start;border-bottom:1px solid var(--border)}
+.score-ttl{font-size:9px;font-weight:700;letter-spacing:1.6px;color:var(--dim);text-transform:uppercase;margin-bottom:3px}
+.score-sub{font-size:12px;font-family:'DM Mono',monospace;color:var(--muted)}
+.bar-area{margin-top:10px}
+.bar-lbl{display:flex;justify-content:space-between;font-size:9px;color:var(--dim);font-family:'DM Mono',monospace;margin-bottom:5px}
+.bar-bg{height:4px;background:var(--surface2);border-radius:3px;overflow:hidden}
+.bar-fill{height:100%;border-radius:3px;transition:width 1.2s cubic-bezier(0.4,0,0.2,1);width:0%}
+.fill-high{background:var(--green)} .fill-mid{background:var(--gold)} .fill-low{background:var(--red)}
+.ring-wrap{position:relative;width:68px;height:68px}
+.ring-wrap svg{transform:rotate(-90deg)}
+.ring-val{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:800;font-family:'DM Mono',monospace}
+.kw-section{padding:14px 20px;display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.kw-ttl{font-size:9px;font-weight:700;letter-spacing:1.4px;text-transform:uppercase;margin-bottom:7px}
+.kw-ttl.matched{color:var(--green)} .kw-ttl.added{color:var(--gold)} .kw-ttl.kept{color:var(--blue)}
+.kw-tags{display:flex;flex-wrap:wrap;gap:4px}
+.kw-tag{font-size:9px;font-family:'DM Mono',monospace;padding:3px 8px;border-radius:20px;border:1px solid;line-height:1.4}
+.kw-tag.matched{background:var(--greenfaint2);border-color:rgba(61,214,140,0.3);color:var(--green)}
+.kw-tag.added{background:var(--goldfaint2);border-color:rgba(240,180,41,0.3);color:var(--gold3)}
+.kw-tag.kept{background:var(--bluefaint2);border-color:rgba(96,165,250,0.3);color:var(--blue)}
+
+/* RESUME CARD */
+#resume-card{display:none;background:#fff;border-radius:var(--r3);overflow:hidden;border:1px solid var(--border)}
+#resume-toolbar{background:#f7f7f7;border-bottom:1px solid #e8e8e8;padding:9px 16px;display:flex;align-items:center;justify-content:space-between}
+#toolbar-name{font-size:10.5px;color:#555;font-family:'DM Mono',monospace}
+.tb-actions{display:flex;gap:7px}
+.tb-btn{font-size:10.5px;font-family:'Syne',sans-serif;font-weight:700;padding:5px 13px;border-radius:5px;cursor:pointer;border:1px solid;transition:all 0.15s}
+.tb-btn.primary{background:#111;color:#fff;border-color:#111} .tb-btn.primary:hover{background:#333;border-color:#333}
+.tb-btn.ghost{background:transparent;color:#555;border-color:#ddd} .tb-btn.ghost:hover{background:#f0f0f0}
+
+/* RESUME BODY */
+#resume-body{padding:34px 40px;font-family:'DM Serif Display',serif;color:#111}
+.r-name{font-size:25px;font-weight:400;color:#111;margin-bottom:3px;letter-spacing:-0.3px}
+.r-headline{font-size:11.5px;color:#666;font-family:'Syne',sans-serif;font-weight:600;letter-spacing:0.4px;margin-bottom:8px}
+.r-contacts{display:flex;flex-wrap:wrap;margin-bottom:20px;border-top:1px solid #eee;padding-top:9px}
+.r-contact{font-size:10px;color:#555;font-family:'DM Mono',monospace;padding:0 10px;border-right:1px solid #ddd}
+.r-contact:first-child{padding-left:0} .r-contact:last-child{border-right:none}
+.r-sec{margin-bottom:18px}
+.r-sec-title{font-size:8px;font-weight:700;letter-spacing:2.5px;text-transform:uppercase;color:#999;border-bottom:1.5px solid #111;padding-bottom:4px;margin-bottom:10px;font-family:'Syne',sans-serif}
+.r-summary{font-size:11px;color:#333;line-height:1.75;font-family:'Syne',sans-serif}
+.r-skills-grid{display:flex;flex-direction:column;gap:6px}
+.r-skill-row{display:flex;gap:10px}
+.r-skill-cat{font-size:8.5px;font-weight:700;color:#888;font-family:'DM Mono',monospace;min-width:110px;flex-shrink:0;padding-top:1px}
+.r-skill-vals{font-size:10px;color:#333;font-family:'DM Mono',monospace;line-height:1.6}
+.r-job{margin-bottom:14px}
+.r-job-hdr{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:1px}
+.r-job-title{font-size:12.5px;font-weight:700;color:#111;font-family:'Syne',sans-serif}
+.r-job-date{font-size:9.5px;color:#888;font-family:'DM Mono',monospace;flex-shrink:0}
+.r-job-meta{font-size:10.5px;color:#666;margin-bottom:6px;font-family:'Syne',sans-serif;font-style:italic}
+.r-bullets{list-style:none;padding:0}
+.r-bullets li{font-size:10.5px;color:#333;line-height:1.65;padding:2px 0 2px 13px;position:relative;font-family:'Syne',sans-serif}
+.r-bullets li::before{content:'▸';position:absolute;left:0;color:#bbb;font-size:9px;top:3px}
+.r-proj{margin-bottom:10px}
+.r-proj-name{font-size:11.5px;font-weight:700;color:#111;font-family:'Syne',sans-serif;margin-bottom:2px}
+.r-proj-tech{font-size:9px;color:#888;font-family:'DM Mono',monospace;margin-bottom:3px}
+.r-proj-desc{font-size:10.5px;color:#444;line-height:1.6;font-family:'Syne',sans-serif}
+.r-edu-row{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px}
+.r-edu-deg{font-size:11.5px;font-weight:700;color:#111;font-family:'Syne',sans-serif}
+.r-edu-school{font-size:10.5px;color:#555;font-family:'Syne',sans-serif}
+.r-edu-date{font-size:9.5px;color:#888;font-family:'DM Mono',monospace;flex-shrink:0}
+
+::-webkit-scrollbar{width:4px} ::-webkit-scrollbar-track{background:transparent} ::-webkit-scrollbar-thumb{background:var(--border2);border-radius:3px}
+
+@media print{
+  #topbar,#left{display:none!important}
+  #app{grid-template-columns:1fr}
+  #right{padding:0}
+  #score-card,#error-msg,#placeholder{display:none!important}
+  #resume-card{border:none!important;border-radius:0!important}
+  #resume-toolbar{display:none!important}
+  #resume-body{padding:18mm 16mm}
+}
+</style>
+</head>
+<body>
+<div id="app">
+
+<!-- TOPBAR -->
+<div id="topbar">
+  <div id="logo">
+    <div id="logo-icon">
+      <svg viewBox="0 0 20 20" fill="none">
+        <rect x="2" y="1.5" width="12" height="15" rx="1.5" stroke="#000" stroke-width="1.6"/>
+        <path d="M5 6h6M5 9h6M5 12h3" stroke="#000" stroke-width="1.3" stroke-linecap="round"/>
+        <circle cx="16" cy="14" r="3.8" fill="#000"/>
+        <path d="M14.8 14l1.2 1.2 1.8-1.8" stroke="#fff" stroke-width="1.1" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+    </div>
+    <div id="logo-name">Resume<span>AI</span></div>
+    <span id="logo-tag">ATS OPTIMIZER · TAA ANALYTICS</span>
+  </div>
+  <div id="topbar-right">
+    <span class="top-badge badge-gemini">Gemini 3 Flash</span>
+    <span class="top-badge badge-ats">ATS-Powered</span>
+  </div>
+</div>
+
+<!-- LEFT -->
+<div id="left">
+
+  <!-- JD -->
+  <div>
+    <div class="lbl">Job Description</div>
+    <textarea id="jd-input" placeholder="Paste the full job description here...
+
+e.g. We are looking for a Senior Data Engineer with 5+ years of experience in Python, SQL, Apache Spark, AWS, dbt..."></textarea>
+  </div>
+
+  <!-- RESUME SECTION -->
+  <div>
+    <div class="lbl">Your Resume</div>
+
+    <!-- Mode Tabs -->
+    <div id="resume-tabs">
+      <button class="res-tab active" id="tab-upload" onclick="switchTab('upload')">⬆ Upload PDF / DOCX</button>
+      <button class="res-tab" id="tab-paste" onclick="switchTab('paste')">✎ Paste Text</button>
+    </div>
+
+    <!-- UPLOAD MODE -->
+    <div id="upload-mode">
+      <div id="upload-zone"
+        ondragover="handleDragOver(event)"
+        ondragleave="handleDragLeave(event)"
+        ondrop="handleDrop(event)">
+        <input type="file" id="file-input" accept=".pdf,.docx,.doc" onchange="handleFileSelect(event)"/>
+        <div class="uz-icon" id="uz-icon">
+          <svg width="17" height="17" viewBox="0 0 18 18" fill="none">
+            <path d="M9 12V4M9 4L6 7M9 4l3 3" stroke="var(--muted)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M3 13v1a1 1 0 001 1h10a1 1 0 001-1v-1" stroke="var(--muted)" stroke-width="1.5" stroke-linecap="round"/>
+          </svg>
+        </div>
+        <div class="uz-title" id="uz-title">Drop your resume here</div>
+        <div class="uz-sub" id="uz-sub">PDF or DOCX &nbsp;·&nbsp; Click or drag to upload</div>
+        <div class="uz-badge" id="uz-badge"></div>
+        <button id="clear-file" onclick="clearFile(event)">✕ Remove file</button>
+      </div>
+      <div id="extracted-preview"></div>
+    </div>
+
+    <!-- PASTE MODE -->
+    <div id="paste-mode" style="display:none">
+      <textarea id="resume-textarea" placeholder="Paste your resume text here...
+
+Include: Name, Contact, Summary, Skills, Work Experience, Projects, Education..."></textarea>
+      <div id="char-count">0 characters</div>
+    </div>
+  </div>
+
+  <div id="sample-hint">No resume? <a onclick="loadSample()">Load sample data →</a></div>
+
+  <button id="submit-btn" onclick="runOptimizer()">
+    <span>⚡</span><span>Optimize My Resume</span>
+  </button>
+
+  <!-- PIPELINE -->
+  <div>
+    <div class="lbl">Processing Pipeline</div>
+    <div id="pipeline">
+      <div class="pipe-step" id="step-1"><span class="pipe-num">01</span><span class="pipe-label">Parse resume content</span><span class="pipe-icon" id="pi-1">·</span></div>
+      <div class="pipe-step" id="step-2"><span class="pipe-num">02</span><span class="pipe-label">Extract JD keywords</span><span class="pipe-icon" id="pi-2">·</span></div>
+      <div class="pipe-step" id="step-3"><span class="pipe-num">03</span><span class="pipe-label">Optimize + merge skills</span><span class="pipe-icon" id="pi-3">·</span></div>
+      <div class="pipe-step" id="step-4"><span class="pipe-num">04</span><span class="pipe-label">Structure JSON output</span><span class="pipe-icon" id="pi-4">·</span></div>
+      <div class="pipe-step" id="step-5"><span class="pipe-num">05</span><span class="pipe-label">Render final resume</span><span class="pipe-icon" id="pi-5">·</span></div>
+    </div>
+  </div>
+
+</div>
+
+<!-- RIGHT -->
+<div id="right">
+
+  <div id="placeholder">
+    <div id="ph-icon">
+      <svg width="34" height="34" viewBox="0 0 36 36" fill="none">
+        <rect x="5" y="3" width="20" height="26" rx="2.5" stroke="currentColor" stroke-width="1.6"/>
+        <path d="M9 10h12M9 15h12M9 20h7" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
+        <circle cx="28" cy="27" r="6.5" stroke="currentColor" stroke-width="1.4"/>
+        <path d="M25.5 27l2 2 3-3" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+    </div>
+    <h3>Your Optimized Resume Appears Here</h3>
+    <p>Upload your PDF/DOCX resume or paste text, add the job description, and hit Optimize.</p>
+    <div class="ph-steps">
+      <div class="ph-item"><div class="ph-n">1</div>Paste your job description</div>
+      <div class="ph-item"><div class="ph-n">2</div>Upload your PDF/DOCX — or switch to Paste tab</div>
+      <div class="ph-item"><div class="ph-n">3</div>Click Optimize → ATS score + PDF download</div>
+    </div>
+  </div>
+
+  <div id="error-msg"></div>
+
+  <!-- SCORE CARD -->
+  <div id="score-card">
+    <div class="score-top">
+      <div>
+        <div class="score-ttl">ATS Match Analysis</div>
+        <div class="score-sub" id="score-sub">Calculating...</div>
+        <div class="bar-area">
+          <div class="bar-lbl"><span>Keyword Coverage</span><span id="bar-pct">0%</span></div>
+          <div class="bar-bg"><div class="bar-fill" id="score-fill"></div></div>
+        </div>
+      </div>
+      <div class="ring-wrap">
+        <svg width="68" height="68" viewBox="0 0 68 68">
+          <circle cx="34" cy="34" r="28" fill="none" stroke="#2a2f3d" stroke-width="6"/>
+          <circle cx="34" cy="34" r="28" fill="none" stroke-width="6" stroke-linecap="round"
+            id="ring-circle" stroke-dasharray="175.9" stroke-dashoffset="175.9"
+            style="transition:stroke-dashoffset 1.2s cubic-bezier(0.4,0,0.2,1)" stroke="#3dd68c"/>
+        </svg>
+        <div class="ring-val" id="ring-val">—</div>
+      </div>
+    </div>
+    <!-- Row 1: Matched + Added -->
+    <div class="kw-section">
+      <div>
+        <div class="kw-ttl matched">✓ JD Keywords Matched</div>
+        <div class="kw-tags" id="matched-tags"></div>
+      </div>
+      <div>
+        <div class="kw-ttl added">+ New Skills Added from JD</div>
+        <div class="kw-tags" id="added-tags"></div>
+      </div>
+    </div>
+    <!-- Row 2: Original skills preserved -->
+    <div class="kw-section" id="kept-section" style="border-top:1px solid var(--border);padding-top:12px;display:none">
+      <div style="grid-column:1/-1">
+        <div class="kw-ttl kept">◈ Your Original Skills (All Preserved)</div>
+        <div class="kw-tags" id="kept-tags"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- RESUME OUTPUT -->
+  <div id="resume-card">
+    <div id="resume-toolbar">
+      <span id="toolbar-name">Optimized Resume</span>
+      <div class="tb-actions">
+        <button class="tb-btn ghost" onclick="copyResume()">Copy Text</button>
+        <button class="tb-btn primary" onclick="downloadPDF()">↓ Download PDF</button>
+      </div>
+    </div>
+    <div id="resume-body"></div>
+  </div>
+
+</div>
+</div>
+
+<!-- PDF.js worker -->
+<script>
+if (typeof pdfjsLib !== 'undefined') {
+  pdfjsLib.GlobalWorkerOptions.workerSrc =
+    'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+}
+</script>
+
+<script>
+/* =====================================================
+   RESUME AI OPTIMIZER
+   Powered by Google Gemini 3 Flash Preview
+   ===================================================== */
+
+// ── STATE ─────────────────────────────────────────────
+var currentMode = 'upload';
+var extractedText = '';
+var uploadedFileName = '';
+
+// ── SAMPLE DATA ───────────────────────────────────────
+var SAMPLE_JD = "Senior Data Engineer — FinTech Company\n\nWe are hiring a Senior Data Engineer to join our growing data platform team. You will design and build scalable data pipelines, maintain our cloud data warehouse, and collaborate with analysts and data scientists.\n\nRequirements:\n- 5+ years of experience in data engineering\n- Proficiency in Python and SQL\n- Hands-on experience with Apache Spark and dbt\n- Strong knowledge of AWS (S3, Redshift, Glue, Lambda)\n- Experience with Airflow or similar orchestration tools\n- Familiarity with Kafka or streaming data\n- Experience with Docker and CI/CD pipelines\n- Excellent communication and cross-team collaboration skills\n- Experience with data modeling (star schema, dimensional modeling)\n- Bonus: Experience with Terraform, Great Expectations, or data quality tools";
+
+var SAMPLE_RESUME = "Rohan Mehta\nrohan.mehta@email.com | +91-98765-43210 | Pune, India\nlinkedin.com/in/rohanmehta | github.com/rohanmehta\n\nSUMMARY\nExperienced software engineer with 4 years of experience in backend development and data. Worked on building APIs and some data work using Python and databases.\n\nSKILLS\nPython, SQL, Java, MySQL, PostgreSQL, AWS, Git, Linux, REST APIs\n\nEXPERIENCE\n\nSoftware Engineer — Infosys, Pune\nJune 2020 – Present\n- Worked on backend services using Python and Flask\n- Wrote SQL queries for reporting purposes\n- Helped migrate some data between databases\n- Worked with AWS S3 for file storage\n- Participated in agile sprints and daily standups\n\nJunior Developer — Wipro, Pune\nJuly 2019 – May 2020\n- Built REST APIs using Java Spring Boot\n- Wrote unit tests\n- Fixed bugs and did code reviews\n\nPROJECTS\n- Data Dashboard: Built a simple dashboard using Python to display metrics\n- ETL Script: Created a Python script to move data from CSV to database\n\nEDUCATION\nB.E. Computer Engineering — Savitribai Phule Pune University, Pune — 2019";
+
+function loadSample() {
+  switchTab('paste');
+  document.getElementById('resume-textarea').value = SAMPLE_RESUME;
+  document.getElementById('jd-input').value = SAMPLE_JD;
+  updateCharCount();
+}
+
+function updateCharCount() {
+  var len = (document.getElementById('resume-textarea').value || '').length;
+  document.getElementById('char-count').textContent = len.toLocaleString() + ' characters';
+}
+document.getElementById('resume-textarea').addEventListener('input', updateCharCount);
+
+// ── TAB SWITCHER ──────────────────────────────────────
+function switchTab(mode) {
+  currentMode = mode;
+  document.getElementById('tab-upload').className = 'res-tab' + (mode === 'upload' ? ' active' : '');
+  document.getElementById('tab-paste').className  = 'res-tab' + (mode === 'paste'  ? ' active' : '');
+  document.getElementById('upload-mode').style.display = mode === 'upload' ? 'block' : 'none';
+  document.getElementById('paste-mode').style.display  = mode === 'paste'  ? 'block' : 'none';
+}
+
+// ── FILE UPLOAD ───────────────────────────────────────
+function handleDragOver(e) {
+  e.preventDefault();
+  document.getElementById('upload-zone').classList.add('drag-over');
+}
+function handleDragLeave(e) {
+  document.getElementById('upload-zone').classList.remove('drag-over');
+}
+function handleDrop(e) {
+  e.preventDefault();
+  document.getElementById('upload-zone').classList.remove('drag-over');
+  var files = e.dataTransfer.files;
+  if (files && files[0]) processFile(files[0]);
+}
+function handleFileSelect(e) {
+  if (e.target.files && e.target.files[0]) processFile(e.target.files[0]);
+}
+
+function setZone(state, fileName, msg) {
+  var zone    = document.getElementById('upload-zone');
+  var title   = document.getElementById('uz-title');
+  var sub     = document.getElementById('uz-sub');
+  var badge   = document.getElementById('uz-badge');
+  var clearBtn= document.getElementById('clear-file');
+  var preview = document.getElementById('extracted-preview');
+
+  // Reset classes
+  zone.className = '';
+
+  if (state === 'idle') {
+    title.textContent = 'Drop your resume here';
+    sub.textContent   = 'PDF or DOCX · Click or drag to upload';
+    badge.className   = 'uz-badge';
+    badge.textContent = '';
+    clearBtn.style.display = 'none';
+    preview.style.display  = 'none';
+    extractedText     = '';
+    uploadedFileName  = '';
+    document.getElementById('file-input').value = '';
+
+  } else if (state === 'parsing') {
+    zone.classList.add('parsing');
+    title.textContent = 'Reading ' + fileName + '...';
+    sub.textContent   = 'Extracting text from your resume';
+    badge.className   = 'uz-badge parsing';
+    badge.textContent = 'Parsing...';
+    clearBtn.style.display = 'none';
+    preview.style.display  = 'none';
+
+  } else if (state === 'done') {
+    zone.classList.add('has-file');
+    title.textContent = fileName;
+    sub.textContent   = extractedText.length.toLocaleString() + ' characters extracted';
+    badge.className   = 'uz-badge ok';
+    badge.textContent = '✓ Ready';
+    clearBtn.style.display = 'block';
+    preview.textContent    = extractedText.slice(0, 220) + '...';
+    preview.style.display  = 'block';
+
+  } else if (state === 'error') {
+    zone.classList.add('file-error');
+    title.textContent = 'Could not read file';
+    sub.textContent   = msg || 'Try a different file';
+    badge.className   = 'uz-badge err';
+    badge.textContent = '✗ Failed';
+    clearBtn.style.display = 'block';
+    preview.style.display  = 'none';
+  }
+}
+
+function clearFile(e) {
+  if (e) { e.stopPropagation(); e.preventDefault(); }
+  setZone('idle');
+}
+
+async function processFile(file) {
+  var name = file.name;
+  var ext  = name.split('.').pop().toLowerCase();
+  if (!['pdf','docx','doc'].includes(ext)) {
+    setZone('error', name, 'Only PDF and DOCX files supported');
+    return;
+  }
+  uploadedFileName = name;
+  setZone('parsing', name);
+  try {
+    var text = ext === 'pdf' ? await parsePDF(file) : await parseDOCX(file);
+    if (!text || text.trim().length < 30) throw new Error('File appears empty or unreadable');
+    extractedText = text.trim();
+    setZone('done', name);
+  } catch(err) {
+    setZone('error', name, err.message);
+  }
+}
+
+async function parsePDF(file) {
+  if (typeof pdfjsLib === 'undefined') throw new Error('PDF parser not loaded — refresh and try again');
+  var buf = await toArrayBuffer(file);
+  var pdf = await pdfjsLib.getDocument({ data: buf }).promise;
+  var out = '';
+  for (var i = 1; i <= pdf.numPages; i++) {
+    var page    = await pdf.getPage(i);
+    var content = await page.getTextContent();
+    out += content.items.map(function(it) { return it.str; }).join(' ') + '\n';
+  }
+  return out;
+}
+
+async function parseDOCX(file) {
+  if (typeof mammoth === 'undefined') throw new Error('DOCX parser not loaded — refresh and try again');
+  var buf    = await toArrayBuffer(file);
+  var result = await mammoth.extractRawText({ arrayBuffer: buf });
+  return result.value;
+}
+
+function toArrayBuffer(file) {
+  return new Promise(function(resolve, reject) {
+    var reader = new FileReader();
+    reader.onload  = function(e) { resolve(e.target.result); };
+    reader.onerror = function()  { reject(new Error('File read failed')); };
+    reader.readAsArrayBuffer(file);
+  });
+}
+
+// ── PIPELINE HELPERS ──────────────────────────────────
+function resetPipeline() {
+  for (var i = 1; i <= 5; i++) {
+    document.getElementById('step-' + i).className = 'pipe-step';
+    document.getElementById('pi-' + i).textContent = '·';
+  }
+}
+function setStep(idx, state) {
+  for (var i = 1; i < idx; i++) {
+    document.getElementById('step-' + i).className = 'pipe-step done';
+    document.getElementById('pi-' + i).textContent = '✓';
+  }
+  if (idx >= 1 && idx <= 5) {
+    document.getElementById('step-' + idx).className = 'pipe-step ' + state;
+    var ic = document.getElementById('pi-' + idx);
+    if (state === 'active') ic.innerHTML = '<div class="spinner-sm"></div>';
+    else if (state === 'done') ic.textContent = '✓';
+    else ic.textContent = '✗';
+  }
+  for (var j = idx + 1; j <= 5; j++) {
+    document.getElementById('step-' + j).className = 'pipe-step';
+    document.getElementById('pi-' + j).textContent = '·';
+  }
+}
+function allDone()  { for (var i = 1; i <= 5; i++) { document.getElementById('step-'+i).className='pipe-step done';  document.getElementById('pi-'+i).textContent='✓'; } }
+function allError() { for (var i = 1; i <= 5; i++) { document.getElementById('step-'+i).className='pipe-step error'; document.getElementById('pi-'+i).textContent='✗'; } }
+function sleep(ms)  { return new Promise(function(r) { setTimeout(r, ms); }); }
+function showErr(msg) { var el=document.getElementById('error-msg'); el.textContent='⚠  '+msg; el.style.display='block'; }
+
+// ── MAIN OPTIMIZER ────────────────────────────────────
+async function runOptimizer() {
+  // Your working API key — unchanged from your original code
+  const apiKey = "AIzaSyDha88o0FNTB0et6DxAch9HkduFNRwyXhw";
+
+  var jd  = document.getElementById('jd-input').value.trim();
+  var btn = document.getElementById('submit-btn');
+
+  // Get resume text from whichever mode is active
+  var resumeText = '';
+  if (currentMode === 'upload') {
+    resumeText = extractedText;
+    if (!resumeText) { showErr('Please upload a PDF or DOCX file first, or switch to Paste Text tab.'); return; }
+  } else {
+    resumeText = document.getElementById('resume-textarea').value.trim();
+    if (!resumeText) { showErr('Please paste your resume text.'); return; }
+  }
+
+  document.getElementById('error-msg').style.display = 'none';
+  if (!jd) { showErr('Please paste the Job Description.'); return; }
+
+  document.getElementById('placeholder').style.display  = 'none';
+  document.getElementById('score-card').style.display   = 'none';
+  document.getElementById('resume-card').style.display  = 'none';
+  resetPipeline();
+
+  btn.disabled = true;
+  btn.innerHTML = '<div class="spinner-sm" style="border-top-color:#000;width:13px;height:13px;border-width:2px"></div><span>Optimizing...</span>';
+
+  try {
+    setStep(1, 'active'); await sleep(500);
+    setStep(2, 'active'); await sleep(400);
+    setStep(3, 'active');
+
+    // ── GEMINI API CALL (your working model + endpoint) ──
+    var response = await fetch(
+      'https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=' + apiKey,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: buildPrompt(jd, resumeText) }] }],
+          generationConfig: {
+            temperature: 0.5,
+            maxOutputTokens: 4000,
+            responseMimeType: 'application/json'
+          }
+        })
+      }
+    );
+
+    if (!response.ok) {
+      var errData = await response.json().catch(function(){ return {}; });
+      throw new Error(errData.error && errData.error.message ? errData.error.message : 'API Error ' + response.status);
+    }
+
+    var data    = await response.json();
+    var rawText = data.candidates[0].content.parts[0].text;
+
+    setStep(4, 'active'); await sleep(300);
+
+    // Since we used responseMimeType: application/json, parse directly
+    var parsed;
+    try {
+      parsed = JSON.parse(rawText);
+    } catch(e) {
+      // Fallback: strip fences if any
+      var cleaned = rawText.replace(/```(?:json)?|```/g, '').trim();
+      parsed = JSON.parse(cleaned);
+    }
+
+    setStep(5, 'active'); await sleep(300);
+
+    renderScore(parsed);
+    renderResume(parsed);
+    allDone();
+
+    document.getElementById('score-card').style.display  = 'block';
+    document.getElementById('resume-card').style.display = 'block';
+
+  } catch(err) {
+    allError();
+    showErr(err.message || 'An unexpected error occurred. Please try again.');
+    document.getElementById('placeholder').style.display = 'flex';
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '<span>⚡</span><span>Optimize My Resume</span>';
+  }
+}
+
+// ── PROMPT ────────────────────────────────────────────
+function buildPrompt(jd, resume) {
+  return 'You are an elite ATS resume optimizer. Analyze the job description and the candidate resume below, then return ONLY a valid JSON object — no markdown, no backticks, no explanation.\n\n=== JOB DESCRIPTION ===\n' + jd + '\n\n=== CANDIDATE RESUME ===\n' + resume + '\n\n=== CRITICAL RULES ===\n1. PRESERVE every skill already in the resume — do not drop any tool, language, or framework the candidate mentioned.\n2. ADD new skills from the JD that are missing from the resume.\n3. NEVER fabricate job titles, companies, or experiences not in the original resume.\n4. Enhance bullet points with realistic quantified metrics.\n5. Weave JD keywords naturally into the summary and bullets.\n6. original_skills = all skills found in the current resume.\n7. added_keywords = JD skills not previously in the resume that were added.\n8. matched_keywords = JD skills already present in the resume.\n\n=== JSON STRUCTURE (return exactly this) ===\n{\n  "candidate": {\n    "name": "Full name from resume",\n    "headline": "Target Role | Key Skill | Key Skill",\n    "email": "email from resume",\n    "phone": "phone from resume",\n    "location": "location from resume",\n    "linkedin": "linkedin if present or empty string",\n    "github": "github if present or empty string"\n  },\n  "ats_score": 78,\n  "score_label": "Strong Match",\n  "matched_keywords": ["skills already in resume that JD also wants"],\n  "added_keywords": ["new skills from JD that were added"],\n  "original_skills": ["every single skill found in the original resume"],\n  "summary": "2-3 sentence professional summary for this exact role using keywords from both resume and JD",\n  "skills": {\n    "Languages & Querying": ["Python", "SQL", "Java"],\n    "Cloud & Data": ["AWS S3", "Redshift", "Apache Spark"],\n    "Frameworks & Tools": ["Flask", "Spring Boot", "Airflow", "dbt", "Docker"],\n    "Practices": ["Agile", "CI/CD", "Data Modeling"]\n  },\n  "experience": [\n    {\n      "title": "Exact title from resume",\n      "company": "Exact company from resume",\n      "location": "Location from resume",\n      "dates": "Dates from resume",\n      "bullets": [\n        "Strong action verb + enhanced task description + quantified metric",\n        "Another bullet with ATS keyword woven in + impact figure"\n      ]\n    }\n  ],\n  "projects": [\n    {\n      "name": "Project name from resume",\n      "tech": "Tech · Stack · Used",\n      "description": "Enhanced project description with impact metric"\n    }\n  ],\n  "education": [\n    {\n      "degree": "Degree from resume",\n      "school": "School from resume",\n      "location": "City, Country",\n      "dates": "Year"\n    }\n  ]\n}';
+}
+
+// ── SCORE RENDERER ────────────────────────────────────
+function renderScore(data) {
+  var score = Math.max(0, Math.min(100, parseInt(data.ats_score) || 0));
+  var color = score >= 75 ? '#3dd68c' : score >= 50 ? '#f0b429' : '#ff6b6b';
+  var cls   = score >= 75 ? 'fill-high' : score >= 50 ? 'fill-mid' : 'fill-low';
+
+  var circle = document.getElementById('ring-circle');
+  circle.setAttribute('stroke', color);
+  setTimeout(function() { circle.style.strokeDashoffset = 175.9 - (score / 100) * 175.9; }, 80);
+  document.getElementById('ring-val').textContent = score + '%';
+  document.getElementById('ring-val').style.color = color;
+  document.getElementById('score-sub').textContent = data.score_label || 'ATS Analysis Complete';
+
+  var fill = document.getElementById('score-fill');
+  fill.className = 'bar-fill ' + cls;
+  setTimeout(function() { fill.style.width = score + '%'; }, 80);
+  document.getElementById('bar-pct').textContent = score + '%';
+
+  var mt = document.getElementById('matched-tags');
+  var at = document.getElementById('added-tags');
+  var kt = document.getElementById('kept-tags');
+  mt.innerHTML = ''; at.innerHTML = ''; kt.innerHTML = '';
+
+  (data.matched_keywords || []).forEach(function(k) { mt.innerHTML += '<span class="kw-tag matched">' + esc(k) + '</span>'; });
+  (data.added_keywords   || []).forEach(function(k) { at.innerHTML += '<span class="kw-tag added">'   + esc(k) + '</span>'; });
+  (data.original_skills  || []).forEach(function(k) { kt.innerHTML += '<span class="kw-tag kept">'    + esc(k) + '</span>'; });
+
+  var keptSection = document.getElementById('kept-section');
+  keptSection.style.display = (data.original_skills && data.original_skills.length) ? 'block' : 'none';
+}
+
+// ── RESUME RENDERER ───────────────────────────────────
+function renderResume(data) {
+  var c = data.candidate || {};
+  var h = '';
+
+  h += '<div class="r-name">' + esc(c.name || 'Your Name') + '</div>';
+  if (c.headline) h += '<div class="r-headline">' + esc(c.headline) + '</div>';
+  var contacts = [c.email, c.phone, c.location, c.linkedin, c.github].filter(Boolean);
+  h += '<div class="r-contacts">';
+  contacts.forEach(function(x) { h += '<span class="r-contact">' + esc(x) + '</span>'; });
+  h += '</div>';
+
+  if (data.summary) {
+    h += '<div class="r-sec"><div class="r-sec-title">Professional Summary</div><div class="r-summary">' + esc(data.summary) + '</div></div>';
+  }
+
+  if (data.skills && typeof data.skills === 'object') {
+    var entries = Object.entries(data.skills).filter(function(e) { return e[1] && e[1].length; });
+    if (entries.length) {
+      h += '<div class="r-sec"><div class="r-sec-title">Technical Skills</div><div class="r-skills-grid">';
+      entries.forEach(function(e) {
+        h += '<div class="r-skill-row"><span class="r-skill-cat">' + esc(e[0]) + ':</span><span class="r-skill-vals">' + e[1].map(esc).join(' · ') + '</span></div>';
+      });
+      h += '</div></div>';
+    }
+  }
+
+  if (data.experience && data.experience.length) {
+    h += '<div class="r-sec"><div class="r-sec-title">Work Experience</div>';
+    data.experience.forEach(function(job) {
+      h += '<div class="r-job"><div class="r-job-hdr"><span class="r-job-title">' + esc(job.title||'') + '</span><span class="r-job-date">' + esc(job.dates||'') + '</span></div>';
+      h += '<div class="r-job-meta">' + esc(job.company||'') + (job.location ? ' &nbsp;·&nbsp; ' + esc(job.location) : '') + '</div>';
+      if (job.bullets && job.bullets.length) {
+        h += '<ul class="r-bullets">';
+        job.bullets.forEach(function(b) { h += '<li>' + esc(b) + '</li>'; });
+        h += '</ul>';
+      }
+      h += '</div>';
+    });
+    h += '</div>';
+  }
+
+  if (data.projects && data.projects.length) {
+    h += '<div class="r-sec"><div class="r-sec-title">Projects</div>';
+    data.projects.forEach(function(p) {
+      h += '<div class="r-proj"><div class="r-proj-name">' + esc(p.name||'') + '</div>';
+      if (p.tech) h += '<div class="r-proj-tech">' + esc(p.tech) + '</div>';
+      if (p.description) h += '<div class="r-proj-desc">' + esc(p.description) + '</div>';
+      h += '</div>';
+    });
+    h += '</div>';
+  }
+
+  if (data.education && data.education.length) {
+    h += '<div class="r-sec"><div class="r-sec-title">Education</div>';
+    data.education.forEach(function(e) {
+      h += '<div class="r-edu-row"><div><div class="r-edu-deg">' + esc(e.degree||'') + '</div><div class="r-edu-school">' + esc(e.school||'') + (e.location ? ' · ' + esc(e.location) : '') + '</div></div><div class="r-edu-date">' + esc(e.year||e.dates||'') + '</div></div>';
+    });
+    h += '</div>';
+  }
+
+  document.getElementById('resume-body').innerHTML = h;
+  document.getElementById('toolbar-name').textContent = (c.name || 'Resume') + ' — ATS Optimized';
+}
+
+function esc(s) {
+  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ── DOWNLOAD PDF ──────────────────────────────────────
+function downloadPDF() {
+  var body = document.getElementById('resume-body').innerHTML;
+  var w = window.open('', '_blank');
+  if (!w) { alert('Allow popups for this page, then try again.'); return; }
+  w.document.write('<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Optimized Resume</title>'
+    + '<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Mono:wght@400;500&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">'
+    + '<style>*{box-sizing:border-box;margin:0;padding:0}body{background:#fff;font-family:"DM Serif Display",serif;color:#111}'
+    + '#rb{padding:18mm 16mm;max-width:210mm;margin:0 auto}'
+    + '.r-name{font-size:24px;font-weight:400;margin-bottom:3px}.r-headline{font-size:11px;color:#666;font-family:"Syne",sans-serif;font-weight:600;margin-bottom:8px}'
+    + '.r-contacts{display:flex;flex-wrap:wrap;margin-bottom:18px;border-top:1px solid #eee;padding-top:8px}'
+    + '.r-contact{font-size:9.5px;color:#555;font-family:"DM Mono",monospace;padding:0 9px;border-right:1px solid #ddd}'
+    + '.r-contact:first-child{padding-left:0}.r-contact:last-child{border-right:none}'
+    + '.r-sec{margin-bottom:16px}.r-sec-title{font-size:7.5px;font-weight:700;letter-spacing:2.5px;text-transform:uppercase;color:#999;border-bottom:1.5px solid #111;padding-bottom:4px;margin-bottom:9px;font-family:"Syne",sans-serif}'
+    + '.r-summary{font-size:10.5px;color:#333;line-height:1.75;font-family:"Syne",sans-serif}'
+    + '.r-skills-grid{display:flex;flex-direction:column;gap:5px}.r-skill-row{display:flex;gap:10px}'
+    + '.r-skill-cat{font-size:8.5px;font-weight:700;color:#888;font-family:"DM Mono",monospace;min-width:110px;flex-shrink:0}'
+    + '.r-skill-vals{font-size:9.5px;color:#333;font-family:"DM Mono",monospace}'
+    + '.r-job{margin-bottom:13px}.r-job-hdr{display:flex;justify-content:space-between;margin-bottom:1px}'
+    + '.r-job-title{font-size:12px;font-weight:700;color:#111;font-family:"Syne",sans-serif}.r-job-date{font-size:9px;color:#888;font-family:"DM Mono",monospace}'
+    + '.r-job-meta{font-size:10px;color:#666;margin-bottom:5px;font-family:"Syne",sans-serif;font-style:italic}'
+    + '.r-bullets{list-style:none;padding:0}.r-bullets li{font-size:10px;color:#333;line-height:1.65;padding:2px 0 2px 12px;position:relative;font-family:"Syne",sans-serif}'
+    + '.r-bullets li::before{content:"▸";position:absolute;left:0;color:#bbb;font-size:8px;top:4px}'
+    + '.r-proj{margin-bottom:9px}.r-proj-name{font-size:11px;font-weight:700;color:#111;font-family:"Syne",sans-serif;margin-bottom:2px}'
+    + '.r-proj-tech{font-size:8.5px;color:#888;font-family:"DM Mono",monospace;margin-bottom:3px}.r-proj-desc{font-size:10px;color:#444;line-height:1.6;font-family:"Syne",sans-serif}'
+    + '.r-edu-row{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:7px}'
+    + '.r-edu-deg{font-size:11px;font-weight:700;color:#111;font-family:"Syne",sans-serif}.r-edu-school{font-size:10px;color:#555;font-family:"Syne",sans-serif}.r-edu-date{font-size:9px;color:#888;font-family:"DM Mono",monospace}'
+    + '@media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}</style>'
+    + '</head><body><div id="rb">' + body + '</div>'
+    + '<script>window.onload=function(){setTimeout(function(){window.print();},900);}<\/script></body></html>');
+  w.document.close();
+}
+
+// ── COPY TEXT ─────────────────────────────────────────
+function copyResume() {
+  var text = document.getElementById('resume-body').innerText;
+  var btn  = document.querySelector('.tb-btn.ghost');
+  navigator.clipboard.writeText(text).then(function() {
+    btn.textContent = '✓ Copied!';
+    setTimeout(function() { btn.textContent = 'Copy Text'; }, 2000);
+  }).catch(function() {
+    alert('Please select the resume text manually and copy.');
+  });
+}
+</script>
+</body>
+</html>
