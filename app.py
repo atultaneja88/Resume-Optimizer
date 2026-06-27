@@ -1,9 +1,10 @@
 from flask import Flask, request, jsonify, send_from_directory
-import anthropic
+import google.generativeai as genai
 import os
 
 app = Flask(__name__, static_folder='static')
-client = anthropic.Anthropic(api_key=os.environ['ANTHROPIC_API_KEY'])
+genai.configure(api_key=os.environ['GEMINI_API_KEY'])
+model = genai.GenerativeModel('gemini-1.5-flash')
 
 @app.route('/')
 def index():
@@ -16,17 +17,9 @@ def optimize():
         if not data or 'prompt' not in data:
             return jsonify({'error': 'Missing prompt'}), 400
 
-        message = client.messages.create(
-            model='claude-sonnet-4-6',
-            max_tokens=4000,
-            messages=[{'role': 'user', 'content': data['prompt']}]
-        )
-        return jsonify({'text': message.content[0].text})
+        response = model.generate_content(data['prompt'])
+        return jsonify({'text': response.text})
 
-    except anthropic.AuthenticationError:
-        return jsonify({'error': 'Invalid API key — check your ANTHROPIC_API_KEY env variable'}), 401
-    except anthropic.RateLimitError:
-        return jsonify({'error': 'Rate limit hit — please wait and try again'}), 429
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
